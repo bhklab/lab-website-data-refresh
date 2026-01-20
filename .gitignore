@@ -3,3 +3,6 @@
 !.pixi/config.toml
 .env
 service_account.json
+job_script.sh
+logs/*
+!logs/.gitignore

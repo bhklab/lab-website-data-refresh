@@ -2,10 +2,11 @@
 authors = ["MessereN <nicholas.messere@torontomu.ca>"]
 channels = ["conda-forge"]
 name = "write_from_sheet_to_db"
-platforms = ["osx-arm64"]
+platforms = ["osx-arm64", "linux-64"]
 version = "0.1.0"
 
 [tasks]
+start = "python scripts/conversion.py"
 
 [dependencies]
 python = ">=3.14.2,<3.15"
