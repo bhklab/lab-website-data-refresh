@@ -6,30 +6,30 @@ import gspread
 from google.oauth2.service_account import Credentials
 from pymongo import MongoClient, UpdateOne
 from dotenv import load_dotenv
+from typing import Union
 
-def parse_year(value: Any) -> Optional[int]:
+def parse_year(value: Any) -> Union[int, str]:
     if value is None:
-        return None
+        return ""
     s = str(value).strip()
     if s == "":
-        return None
+        return ""
     try:
         return int(s)
     except ValueError:
-        return None
+        return ""
 
-
-def parse_date(value: Any) -> Optional[datetime]:
+def parse_date(value: Any) -> Union[datetime, str]:
     """
     Attempts to parse a date from common formats.
     - If your sheet uses ISO like 2024-01-15, this will work.
     - If your sheet uses other formats, add them below.
     """
     if value is None:
-        return None
+        return ""
     s = str(value).strip()
     if s == "":
-        return None
+        return ""
 
     # Common formats
     formats = [
@@ -49,7 +49,7 @@ def parse_date(value: Any) -> Optional[datetime]:
             continue
 
     # If it doesn't match, store it as None (or store raw string if preferred)
-    return None
+    return ""
 
 def get_sheet_records(service_account_file: str, sheet_id: str, worksheet_name: str) -> List[Dict[str, Any]]:
     scopes = [
@@ -66,15 +66,28 @@ def get_sheet_records(service_account_file: str, sheet_id: str, worksheet_name: 
     # Uses row 1 as headers
     raw = ws.get_all_records()
 
+
     records: List[Dict[str, Any]] = []
     for r in raw:
         doc: Dict[str, Any] = {
+
             "title": str(r.get("title", "")).strip(),
-            "authors": str(r.get("authors", "")).strip(),
-            "year": parse_year(r.get("year")),
-            "url": str(r.get("url", "")).strip(),
-            "publisher": str(r.get("publisher", "")).strip(),
-            "date": parse_date(r.get("date")),
+            #Publications specific fields
+            **({"year": parse_year(r.get("year"))} if worksheet_name == "Publications" else {}),
+
+            #Publuctions and Preprints specific fields
+            **({"authors": str(r.get("authors", "")).strip()} if worksheet_name in ["Publications", "Preprints"] else {}),
+            **({"publisher": str(r.get("publisher", "")).strip()} if worksheet_name in ["Publications", "Preprints"] else {}),
+
+            #Common fields
+            **({"url": str(r.get("url", "")).strip()} if worksheet_name in ["Publications", "Presentations"] else {"doi": str(r.get("doi", "")).strip()}),
+            **({"date": parse_date(r.get("date"))} if worksheet_name in ["Publications", "Presentations"] else {"date": parse_year(r.get("date"))}),
+            
+            #Presentations specific fields
+            **({"event": str(r.get("event", "")).strip()} if worksheet_name == "Presentations" else {}),
+            **({"location": str(r.get("location", "")).strip()} if worksheet_name == "Presentations" else {}),
+            **({"format": str(r.get("format", "")).strip()} if worksheet_name == "Presentations" else {}),
+            
             "image": str(r.get("image", "")).strip()
         }
         records.append(doc)
@@ -85,8 +98,7 @@ def upsert_to_mongodb(
     mongodb_uri: str,
     db_name: str,
     collection_name: str,
-    records: List[Dict[str, Any]],
-    unique_key: str = "url",
+    records: List[Dict[str, Any]]
 ) -> Dict[str, int]:
     client = MongoClient(mongodb_uri)
     col = client[db_name][collection_name]
@@ -100,14 +112,22 @@ def upsert_to_mongodb(
     for doc in records:
         doc["_syncedAt"] = now
 
-        key_val = doc.get(unique_key)
-        if not key_val:
-            # If a row has no URL, you can either skip it or handle differently
-            continue
+        if collection_name == "publications":
+            filter_doc = {"url": doc.get("url", "")}
+            if filter_doc["url"] == "":
+                continue # Skip if no url
+        elif collection_name == "presentations":
+            filter_doc = {"url": doc.get("url", ""), "event": doc.get("event", "")}
+            if filter_doc["event"] == "" or filter_doc["url"] == "":
+                continue # Skip if no event or url
+        else:
+            filter_doc = {"doi": doc.get("doi", "")}
+            if filter_doc["doi"] == "":
+                continue # Skip if no doi
 
         ops.append(
             UpdateOne(
-                {unique_key: key_val},
+                filter_doc,
                 {"$set": doc},
                 upsert=True,
             )
@@ -128,23 +148,23 @@ def main():
 
     mongodb_uri = os.environ["MONGODB_URI"]
     db_name = os.environ["MONGODB_DB"]
-    collection_name = os.environ["MONGODB_COLLECTION"]
+    collection_names = os.environ["MONGODB_COLLECTIONS"].split(",")
 
     service_account_file = os.environ["GOOGLE_SERVICE_ACCOUNT_FILE"]
     sheet_id = os.environ["GOOGLE_SHEET_ID"]
-    worksheet_name = os.environ.get("GOOGLE_WORKSHEET_NAME", "Sheet1")
+    worksheet_names = os.environ.get("GOOGLE_WORKSHEET_NAMES", "Sheet1").split(",")
 
-    unique_key = os.environ.get("UNIQUE_KEY_COLUMN", "url")
 
-    print("Reading Google Sheet...")
-    records = get_sheet_records(service_account_file, sheet_id, worksheet_name)
-    print(f"Fetched {len(records)} rows.")
+    for worksheet_name, collection_name in zip(worksheet_names, collection_names):
+        print(f"Reading {worksheet_name} from Google Sheets...")
+        records = get_sheet_records(service_account_file, sheet_id, worksheet_name)
+        print(f"Fetched {len(records)} rows.")
 
-    print(f"Syncing to MongoDB (upsert by '{unique_key}')...")
-    stats = upsert_to_mongodb(mongodb_uri, db_name, collection_name, records, unique_key=unique_key)
+        print(f"Syncing to MongoDB (upsert into '{collection_name}')...")
+        stats = upsert_to_mongodb(mongodb_uri, db_name, collection_name, records)
 
-    print("Done.")
-    print(stats)
+        print("Done.")
+        print(f'{stats} to {collection_name} collection')
 
 
 if __name__ == "__main__":
