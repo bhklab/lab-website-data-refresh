@@ -72,6 +72,9 @@ def get_sheet_records(service_account_file: str, sheet_id: str, worksheet_name: 
         doc: Dict[str, Any] = {
 
             "title": str(r.get("title", "")).strip(),
+
+            # Publications specific fields
+            **({"unique_id": str(r.get("unique_id", "")).strip()} if worksheet_name == "Presentations" else {}),
             #Publications specific fields
             **({"year": parse_year(r.get("year"))} if worksheet_name == "Publications" else {}),
 
@@ -82,7 +85,7 @@ def get_sheet_records(service_account_file: str, sheet_id: str, worksheet_name: 
             #Common fields
             **({"url": str(r.get("url", "")).strip()} if worksheet_name in ["Publications", "Presentations"] else {"doi": str(r.get("doi", "")).strip()}),
             **({"date": parse_date(r.get("date"))} if worksheet_name in ["Publications", "Presentations"] else {"date": parse_year(r.get("date"))}),
-            
+
             #Presentations specific fields
             **({"event": str(r.get("event", "")).strip()} if worksheet_name == "Presentations" else {}),
             **({"location": str(r.get("location", "")).strip()} if worksheet_name == "Presentations" else {}),
