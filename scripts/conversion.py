@@ -117,9 +117,9 @@ def upsert_to_mongodb(
             if filter_doc["url"] == "":
                 continue # Skip if no url
         elif collection_name == "presentations":
-            filter_doc = {"url": doc.get("url", ""), "event": doc.get("event", "")}
-            if filter_doc["event"] == "" or filter_doc["url"] == "":
-                continue # Skip if no event or url
+            filter_doc = {"unique_id": doc.get("unique_id", "")}
+            if filter_doc["unique_id"] == "":
+                continue # Skip if no unique_id
         else:
             filter_doc = {"doi": doc.get("doi", "")}
             if filter_doc["doi"] == "":
