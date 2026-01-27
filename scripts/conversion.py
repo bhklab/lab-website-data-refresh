@@ -78,7 +78,7 @@ def get_sheet_records(service_account_file: str, sheet_id: str, worksheet_name: 
             #Publications specific fields
             **({"year": parse_year(r.get("year"))} if worksheet_name == "Publications" else {}),
 
-            #Publuctions and Preprints specific fields
+            #Publications and Preprints specific fields
             **({"authors": str(r.get("authors", "")).strip()} if worksheet_name in ["Publications", "Preprints"] else {}),
             **({"publisher": str(r.get("publisher", "")).strip()} if worksheet_name in ["Publications", "Preprints"] else {}),
 
