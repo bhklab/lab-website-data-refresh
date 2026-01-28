@@ -81,10 +81,10 @@ def get_sheet_records(service_account_file: str, sheet_id: str, worksheet_name: 
             #Publications and Preprints specific fields
             **({"authors": str(r.get("authors", "")).strip()} if worksheet_name in ["Publications", "Preprints"] else {}),
             **({"publisher": str(r.get("publisher", "")).strip()} if worksheet_name in ["Publications", "Preprints"] else {}),
+            **({"doi": str(r.get("doi", "")).strip()} if worksheet_name in ["Publications", "Preprints"] else {}),
 
             #Common fields
             **({"url": str(r.get("url", "")).strip()} if worksheet_name in ["Publications", "Presentations"] else {}),
-            **({"doi": str(r.get("doi", "")).strip()} if worksheet_name in ["Publications", "Preprints"] else {}),
             **({"date": parse_date(r.get("date"))} if worksheet_name in ["Publications", "Presentations"] else {"date": parse_year(r.get("date"))}),
 
             #Presentations specific fields
