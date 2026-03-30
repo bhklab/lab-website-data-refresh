@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 import gspread
+from copy import deepcopy
 from google.oauth2.service_account import Credentials
 from pymongo import MongoClient, UpdateOne
 from dotenv import load_dotenv
@@ -83,7 +84,7 @@ def get_records_collabs(service_account_file: str, sheet_id: str, worksheet_name
             "members": str(r.get("Lab member(s) involved", "")).strip(),
             "role": str(r.get("Lab's Role", "")).strip(),
             "status": str(r.get("Status", "")).strip(),
-            "outputs" : str(r.get("Outputs / Notes", "")).strip(),
+            "outputs" : str(r.get("Outputs / Notes", "")).strip()
 
 
         }
@@ -156,21 +157,29 @@ def upsert_to_mongodb(
         doc["_syncedAt"] = now
 
         if collection_name == "publications":
+            copy = deepcopy(doc)
+            del copy["doi"]
             filter_doc = {"url": doc.get("url", "")}
-            if filter_doc["url"] == "":
-                continue # Skip if no url
+            if "" in copy.values():
+                print("This doc in publications was not upserted due to missing fields:", copy)
+                continue # Skip if any required field is missing
         elif collection_name == "presentations":
             filter_doc = {"unique_id": doc.get("unique_id", "")}
-            if filter_doc["unique_id"] == "":
-                continue # Skip if no unique_id
+            if "" in doc.values():
+                print("This doc in presentations was not upserted due to missing fields:", doc)
+                continue # Skip if any required field is missing
         elif collection_name == 'collaborations':
+            copy = deepcopy(doc)
+            del copy["role"], copy["outputs"]
             filter_doc = {"Identifier": doc.get("Identifier", "")}
-            if filter_doc["Identifier"] == "":
-                continue # Skip if no Identifier
+            if "" in copy.values():
+                print("This doc in collaborations was not upserted due to missing fields:", copy)
+                continue # Skip if any required field is missing
         else:
             filter_doc = {"doi": doc.get("doi", "")}
-            if filter_doc["doi"] == "":
-                continue # Skip if no doi
+            if "" in doc.values():
+                print("This doc in preprints was not upserted due to missing fields:", doc)
+                continue # Skip if any required field is missing
 
         ops.append(
             UpdateOne(
@@ -212,7 +221,7 @@ def main():
 
         print("Done.")
         print(f'{stats} to {collection_name} collection')
-        
+
     #Collaborations Section
     print("Reading Collaboration from Google Sheets...")
     collab_sheet = os.environ["GOOGLE_SHEET_ID_COLLAB"]
