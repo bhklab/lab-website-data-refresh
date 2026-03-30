@@ -51,6 +51,45 @@ def parse_date(value: Any) -> Union[datetime, str]:
     # If it doesn't match, store it as None (or store raw string if preferred)
     return ""
 
+def get_records_collabs(service_account_file: str, sheet_id: str, worksheet_name: str) -> List[Dict[str, Any]]:
+    scopes = [
+        "https://www.googleapis.com/auth/spreadsheets.readonly",
+        "https://www.googleapis.com/auth/drive.readonly",
+    ]
+
+    creds = Credentials.from_service_account_file(service_account_file, scopes=scopes)
+    gc = gspread.authorize(creds)
+
+    sh = gc.open_by_key(sheet_id)
+    ws = sh.worksheet(worksheet_name)
+
+    # Uses row 1 as headers
+    raw = ws.get_all_records()
+
+
+    records: List[Dict[str, Any]] = []
+    for r in raw:
+        doc: Dict[str, Any] = {
+            "Identifier": str(r.get("Identifier", "")).strip(),
+            "maincollab": str(r.get("Main collaborator", "")).strip(),
+            "othercollabs": str(r.get("Other collaborators", "")).strip(),
+            "organization": str(r.get("Institution / Organization", "")).strip(),
+            "city": str(r.get("City", "")).strip(),
+            "country": str(r.get("Country of collaborator", "")).strip(),
+            "startyear": parse_year(r.get("Starting Year")),
+            "type": str(r.get("Involvement type", "")).strip(),
+            "project": str(r.get("Project / Topic", "")).strip(),
+            "contact": str(r.get("Primary contact", "")).strip(),
+            "members": str(r.get("Lab member(s) involved", "")).strip(),
+            "role": str(r.get("Lab's Role", "")).strip(),
+            "status": str(r.get("Status", "")).strip(),
+            "outputs" : str(r.get("Outputs / Notes", "")).strip(),
+
+
+        }
+        records.append(doc)
+        
+    return records
 def get_sheet_records(service_account_file: str, sheet_id: str, worksheet_name: str) -> List[Dict[str, Any]]:
     scopes = [
         "https://www.googleapis.com/auth/spreadsheets.readonly",
@@ -124,6 +163,10 @@ def upsert_to_mongodb(
             filter_doc = {"unique_id": doc.get("unique_id", "")}
             if filter_doc["unique_id"] == "":
                 continue # Skip if no unique_id
+        elif collection_name == 'collaborations':
+            filter_doc = {"Identifier": doc.get("Identifier", "")}
+            if filter_doc["Identifier"] == "":
+                continue # Skip if no Identifier
         else:
             filter_doc = {"doi": doc.get("doi", "")}
             if filter_doc["doi"] == "":
@@ -169,6 +212,18 @@ def main():
 
         print("Done.")
         print(f'{stats} to {collection_name} collection')
+        
+    #Collaborations Section
+    print("Reading Collaboration from Google Sheets...")
+    collab_sheet = os.environ["GOOGLE_SHEET_ID_COLLAB"]
+    collab_collection_name = os.environ["MONGODB_COLLECTION_COLLABS"]
+    collab_worksheet_name = os.environ["GOOGLE_WORKSHEET_NAME_COLLAB"]
+    collab_records = get_records_collabs(service_account_file, collab_sheet, collab_worksheet_name)
+    print(f"Fetched {len(collab_records)} rows.")
+    print(f"Syncing to MongoDB (upsert into '{collab_collection_name}')...")
+    stats = upsert_to_mongodb(mongodb_uri, db_name, collab_collection_name, collab_records)
+    print("Done.")
+    print(f'{stats} to {collab_collection_name} collection')
 
 
 if __name__ == "__main__":
